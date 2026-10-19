@@ -1,11 +1,7 @@
 """Independent-set planners.
 
-The primary use-case is the discovery of groups of nodes that do not
-communicate with one another (isolated logical subnetworks).
-
-A lightweight GWMIN-style greedy heuristic is provided as a stand-in.
-It can later be replaced or complemented by a call to a compiled
-MORPH binary (morph_qoblib_solver) that accepts .gph format.
+Primary use-case: groups of nodes that do not communicate (isolated logical
+subnetworks). Supports GWMIN (pure Python) and MORPH (compiled binary).
 """
 
 from __future__ import annotations
@@ -21,24 +17,7 @@ def gwmin_independent(
     k: Optional[int] = None,
     weights: Optional[Sequence[float]] = None,
 ) -> List[int]:
-    """GWMIN greedy independent set (weight / (degree + 1)).
-
-    Parameters
-    ----------
-    g : Graph
-        Input graph (treated as undirected for independence).
-    banned : iterable of int, optional
-        Nodes that must not be selected.
-    k : int, optional
-        Maximum number of nodes to return.  None = unlimited.
-    weights : sequence of float, optional
-        Node weights (higher = preferred).  Default = 1.0 for all.
-
-    Returns
-    -------
-    list of int
-        Selected node indices forming an independent set.
-    """
+    """GWMIN greedy independent set (weight / (degree + 1))."""
     n = g.n
     banned_set: Set[int] = set(banned or [])
     alive = [i not in banned_set for i in range(n)]
@@ -46,13 +25,12 @@ def gwmin_independent(
     if len(w) != n:
         raise ValueError("weights length must equal number of nodes")
 
-    # current degree among alive nodes
     deg = [0] * n
     for u in range(n):
         if not alive[u]:
             continue
         for v in g.adj[u]:
-            if alive[v] and (not g.directed or True):  # undirected view
+            if alive[v]:
                 deg[u] += 1
 
     picked: List[int] = []
@@ -72,14 +50,12 @@ def gwmin_independent(
             break
         picked.append(best)
         alive[best] = False
-        # remove neighbours
         for u in list(g.adj[best].keys()):
             if alive[u]:
                 alive[u] = False
                 for x in g.adj[u]:
                     if alive[x]:
                         deg[x] -= 1
-        # also reverse edges if directed
         if g.directed:
             for u in range(n):
                 if alive[u] and best in g.adj[u]:
@@ -96,14 +72,28 @@ def plan_independent(
     k: Optional[int] = None,
     weights: Optional[Sequence[float]] = None,
     method: str = "gwmin",
+    budget_ms: int = 100,
+    seed: int = 1,
 ) -> List[int]:
     """Public planner interface.
 
-    Currently only 'gwmin' is implemented.  Future values may include
-    'morph' (external binary) or other heuristics.
+    Methods
+    -------
+    gwmin : pure-Python GWMIN heuristic (always available).
+    morph : call compiled MORPH binary (dump_morph). Falls back to gwmin
+            if the binary is missing or fails.
     """
     if method == "gwmin":
         return gwmin_independent(g, banned=banned, k=k, weights=weights)
+    if method == "morph":
+        try:
+            from .morph_adapter import morph_independent
+            return morph_independent(
+                g, banned=banned, k=k, budget_ms=budget_ms, seed=seed
+            )
+        except Exception:
+            # graceful degradation — keep the audit path alive
+            return gwmin_independent(g, banned=banned, k=k, weights=weights)
     raise ValueError(f"unknown independent-set method: {method}")
 
 

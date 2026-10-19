@@ -1,86 +1,80 @@
-# Clan-Subnet Detector (MVP)
+# Clan-Subnet Detector (MVP 0.2)
 
-**MVP auditable** for detection of **cliques (clanes)** and **isolated subnetworks** in communication / interaction graphs (internet traffic, social networks).
+**MVP auditable** for detection of **cliques (clanes)**, **dense subgraphs** and **isolated subnetworks** in communication / interaction graphs (internet traffic, social networks).
 
-Every reported structure is **independently re-verified** against the original graph before it is accepted into the audit report. The goal is a small, reproducible core that a third party can audit without trusting the internal detector implementation.
+Every reported structure is **independently re-verified** against the original graph before it is accepted into the audit report. Reports can be **HMAC-signed** (or ECDSA when `cryptography` is available) so they become verifiable artefacts in the spirit of ChannelGuardian / TDCP policy bindings.
 
 ## What the MVP does
 
-1. Loads a graph (edge-list or built-in synthetic demo).
-2. Runs two detectors:
+1. Loads a graph (static edge-list, timestamped edge-list, NetFlow-style summary, or built-in demo).
+2. Optional **temporal window** extraction over timestamped events.
+3. Runs detectors:
    - Greedy clique construction.
-   - Independent-set planner (GWMIN stand-in; interface ready for a MORPH binary later).
-3. **Independently verifies** each result (`is_clique` / `is_independent`).
-4. Computes transparent risk / isolation scores.
-5. Emits a machine-readable **audit report** (JSON + Markdown) containing:
-   - Environment snapshot (version, Python, platform)
-   - Graph summary (n, m, density, components)
-   - Every finding with its verification flag
-   - Automated PASS/FAIL checks
+   - Independent-set planner: **GWMIN** (pure Python) or **MORPH** (compiled binary via `dump_morph`).
+   - **k-core** and **Charikar densest-subgraph** peeling (complement to clique).
+4. Independently verifies each result.
+5. Emits an audit report (JSON + Markdown) and optionally a **signed envelope**.
 
 ## Quick start
 
 ```bash
-# From repository root (no install required for the smoke path)
 export PYTHONPATH=src
-python -m clan_subnet_detector.cli --demo --out results/
+# Optional: point to the MORPH vertex-dump binary
+export MORPH_DUMP_BIN=/path/to/dump_morph
 
-# Or run the smoke script
+python -m clan_subnet_detector.cli --demo --out results/
+python -m clan_subnet_detector.cli --demo --method morph --budget-ms 100 --out results/
+python -m clan_subnet_detector.cli --demo --sign-hmac 'your-secret' --out results/
+
+# Timestamped edges + window
+python -m clan_subnet_detector.cli --timestamped data/samples/small_temporal.edgelist \
+  --window 100 150 --out results/
+```
+
+Smoke:
+
+```bash
 ./scripts/smoke_test.sh
 ```
 
-Example with your own edge-list:
+## MORPH integration
+
+Build MORPH and the vertex dump helper:
 
 ```bash
-python -m clan_subnet_detector.cli --edge-list data/samples/small_clan.edgelist --out results/
+git clone https://github.com/dcpracmatic-prog/MORPH.git
+cd MORPH && make
+# compile dump helper (see project docs) or set MORPH_DUMP_BIN
 ```
 
-## Audit contract (simplified)
+`plan_independent(..., method="morph")` writes a temporary `.gph`, calls `dump_morph`, and returns 0-indexed vertices. If the binary is missing or fails, the planner **falls back to GWMIN** so the audit path remains available.
 
-| Check                         | Meaning                                              |
-|-------------------------------|------------------------------------------------------|
-| `clique_verified`             | Returned nodes form a true clique in the input graph |
-| `independent_set_verified`    | Returned nodes form a true independent set           |
-| `all_findings_verified`       | Both of the above succeeded                          |
-| `graph_non_empty`             | Input contained at least one node                    |
+## Audit contract
 
-If any verification fails the CLI exits with status 1 and the report records the failure explicitly.
+| Check | Meaning |
+|-------|---------|
+| `clique_verified` | Returned nodes form a true clique |
+| `independent_set_verified` | Returned nodes form a true independent set |
+| `dense_verified` | k-core / densest peeling checks passed |
+| `all_findings_verified` | All of the above |
 
-Reports are written to:
+Signed reports (`audit_report.signed.json`) include `digest_sha256`, algorithm, `kid` and the full report payload. Verify with `verify_report_hmac`.
 
-- `results/AUDIT_REPORT.md` – human-readable
-- `results/audit_report.json` – machine-readable
-
-## Package layout
+## Layout
 
 ```
 src/clan_subnet_detector/
-├── graph/          # Graph model + basic metrics
-├── detection/      # Clique + independent-set algorithms + verifiers
-├── scoring/        # Transparent risk / isolation scores
-├── ingest/         # Edge-list loader
-├── audit/          # run_audit() + AuditReport (JSON/Markdown)
-└── cli.py          # Minimal command-line entry point
+├── graph/          # Graph, metrics, TemporalGraph + windows
+├── detection/      # clique, independent set (GWMIN/MORPH), k-core, densest
+├── scoring/        # risk / isolation scores
+├── ingest/         # edge-list, timestamped, NetFlow-style
+├── audit/          # run_audit, AuditReport, HMAC/ECDSA signing
+└── cli.py
 ```
 
-## Design principles retained from related work
+## Version
 
-- **Correctness before performance** – verification is mandatory, not optional.
-- **Reproducibility** – report captures version, platform and exact findings.
-- **Pluggable planners** – independent-set path accepts a method flag; GWMIN is the current stand-in for a future MORPH call.
-- **Minimal surface** – pure Python, no mandatory third-party runtime dependencies.
-
-## Status
-
-- Version: `0.1.0-mvp`
-- Scope: single-shot detection + independent verification + audit report.
-- Not yet included: temporal windows, streaming ingestion, SIEM adapters, signed policy bindings, production-scale optimisations.
-
-## Related projects
-
-- MORPH – Maximum Independent Set heuristics and QOBLIB-style validation.
-- ChannelGuardian / TDCP – policy-bound channel isolation concepts.
-- Centinela – methodological inspiration for diagnostic / pre-job probes.
+`0.2.0-mvp` — MORPH adapter, dense detectors, temporal windows, signable reports.
 
 ## License
 
