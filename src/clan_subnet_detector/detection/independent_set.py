@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Iterable, List, Optional, Sequence, Set
 
-from graph.graph import Graph
+from ..graph.graph import Graph
 
 
 def gwmin_independent(

@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import List, Tuple
 
-from graph.graph import Graph
+from ..graph.graph import Graph
 
 
 def load_edge_list(

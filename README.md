@@ -1,90 +1,87 @@
-# Clan-Subnet Detector
+# Clan-Subnet Detector (MVP)
 
-**Primitive repository** for a cybersecurity and network-analysis system focused on the detection of **cliques (clanes)** and **isolated subnetworks** in internet traffic graphs and social-network interaction graphs.
+**MVP auditable** for detection of **cliques (clanes)** and **isolated subnetworks** in communication / interaction graphs (internet traffic, social networks).
 
-This project builds on independent-set heuristics (MORPH-style planners), conflict-graph modelling, and graph-theoretic primitives already validated in related work (QOBLIB-style verification, ChannelGuardian failover concepts).
+Every reported structure is **independently re-verified** against the original graph before it is accepted into the audit report. The goal is a small, reproducible core that a third party can audit without trusting the internal detector implementation.
 
-## Objectives
+## What the MVP does
 
-- Model communication or interaction data as (directed/undirected, weighted) graphs.
-- Detect dense groups (**cliques** / high-density subgraphs) that may indicate coordinated activity, C2 clusters, or closed communities.
-- Detect **isolated subnetworks**: connected components, low-cut communities, and large independent / quasi-independent sets (nodes that do not communicate with one another).
-- Score findings by size, density, isolation (cut size), temporal evolution and external reputation signals.
-- Provide a verifiable, reproducible core that can later integrate policy bindings and signed containment actions.
+1. Loads a graph (edge-list or built-in synthetic demo).
+2. Runs two detectors:
+   - Greedy clique construction.
+   - Independent-set planner (GWMIN stand-in; interface ready for a MORPH binary later).
+3. **Independently verifies** each result (`is_clique` / `is_independent`).
+4. Computes transparent risk / isolation scores.
+5. Emits a machine-readable **audit report** (JSON + Markdown) containing:
+   - Environment snapshot (version, Python, platform)
+   - Graph summary (n, m, density, components)
+   - Every finding with its verification flag
+   - Automated PASS/FAIL checks
 
-## Current status (primitive / scaffolding)
-
-This repository contains only the initial skeleton:
-
-- Project layout and module boundaries
-- Core data structures for graphs
-- Placeholder interfaces for detection algorithms
-- Basic independent-set planner stub (GWMIN-style, ready for MORPH integration)
-- Minimal CLI and example entry points
-- Test and documentation placeholders
-
-No production-grade performance, persistence or SIEM integration is present yet.
-
-## Repository layout
-
-```
-clan-subnet-detector/
-├── src/
-│   ├── graph/          # Graph representation, loaders, basic metrics
-│   ├── detection/      # Clique, community, independent-set algorithms
-│   ├── scoring/        # Risk scoring and ranking of findings
-│   ├── ingest/         # Traffic / social-graph ingestion adapters (stubs)
-│   └── utils/          # Shared helpers
-├── tests/              # Unit and property-style checks
-├── examples/           # Runnable examples and synthetic scenarios
-├── docs/               # Design notes and algorithm references
-├── scripts/            # Build, benchmark and validation helpers
-├── data/samples/       # Small synthetic graphs for local testing
-├── README.md
-├── pyproject.toml      # (or package.json / Cargo.toml later)
-└── LICENSE
-```
-
-## Quick start (development)
+## Quick start
 
 ```bash
-# Python environment (recommended for the first prototype)
-python -m venv .venv
-source .venv/bin/activate   # or equivalent on Windows
-pip install -e ".[dev]"
+# From repository root (no install required for the smoke path)
+export PYTHONPATH=src
+python -m clan_subnet_detector.cli --demo --out results/
 
-# Run a minimal example
-python -m examples.synthetic_detection
+# Or run the smoke script
+./scripts/smoke_test.sh
 ```
 
-## Design principles
+Example with your own edge-list:
 
-1. **Correctness first** – every reported clique or independent set must be independently verifiable against the input graph (same discipline applied to MORPH / QOBLIB).
-2. **Separation of concerns** – ingestion, graph model, detection algorithms, scoring and output are distinct layers.
-3. **Pluggable planners** – the independent-set component accepts both the lightweight GWMIN stub and a future call to a compiled MORPH binary.
-4. **Reproducibility** – seeds, budgets and exact graph snapshots are recorded with every result.
-5. **Minimal external surface** – the core library has few mandatory dependencies; optional adapters (NetFlow, PCAP summaries, social APIs) are isolated.
+```bash
+python -m clan_subnet_detector.cli --edge-list data/samples/small_clan.edgelist --out results/
+```
 
-## Roadmap (high level)
+## Audit contract (simplified)
 
-1. Solidify graph model + loaders for edge-list / adjacency formats.
-2. Implement and verify clique heuristics and independent-set planner.
-3. Add community detection (Louvain / Leiden) and cut-based isolation metrics.
-4. Temporal windowing and change detection.
-5. Scoring model and simple alerting interface.
-6. Integration points for policy-signed containment (ChannelGuardian / TDCP style).
-7. Performance scaling and streaming ingestion.
+| Check                         | Meaning                                              |
+|-------------------------------|------------------------------------------------------|
+| `clique_verified`             | Returned nodes form a true clique in the input graph |
+| `independent_set_verified`    | Returned nodes form a true independent set           |
+| `all_findings_verified`       | Both of the above succeeded                          |
+| `graph_non_empty`             | Input contained at least one node                    |
+
+If any verification fails the CLI exits with status 1 and the report records the failure explicitly.
+
+Reports are written to:
+
+- `results/AUDIT_REPORT.md` – human-readable
+- `results/audit_report.json` – machine-readable
+
+## Package layout
+
+```
+src/clan_subnet_detector/
+├── graph/          # Graph model + basic metrics
+├── detection/      # Clique + independent-set algorithms + verifiers
+├── scoring/        # Transparent risk / isolation scores
+├── ingest/         # Edge-list loader
+├── audit/          # run_audit() + AuditReport (JSON/Markdown)
+└── cli.py          # Minimal command-line entry point
+```
+
+## Design principles retained from related work
+
+- **Correctness before performance** – verification is mandatory, not optional.
+- **Reproducibility** – report captures version, platform and exact findings.
+- **Pluggable planners** – independent-set path accepts a method flag; GWMIN is the current stand-in for a future MORPH call.
+- **Minimal surface** – pure Python, no mandatory third-party runtime dependencies.
+
+## Status
+
+- Version: `0.1.0-mvp`
+- Scope: single-shot detection + independent verification + audit report.
+- Not yet included: temporal windows, streaming ingestion, SIEM adapters, signed policy bindings, production-scale optimisations.
 
 ## Related projects
 
-- MORPH – Maximum Independent Set heuristics and QOBLIB validation.
-- ChannelGuardian / TDCP – policy-bound channel isolation and failover.
-- Centinela – hardware-validation style probes (methodological inspiration for pre-job diagnostics).
+- MORPH – Maximum Independent Set heuristics and QOBLIB-style validation.
+- ChannelGuardian / TDCP – policy-bound channel isolation concepts.
+- Centinela – methodological inspiration for diagnostic / pre-job probes.
 
 ## License
 
-See `LICENSE` (to be chosen; currently placeholder).
-
-## Author / Maintainer
-
-dcpracmatic-prog
+See `LICENSE` (proprietary placeholder until formal terms are defined).

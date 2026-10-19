@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Iterable, List, Set
 
-from graph.graph import Graph
+from ..graph.graph import Graph
 
 
 def is_clique(g: Graph, nodes: Iterable[int]) -> bool:

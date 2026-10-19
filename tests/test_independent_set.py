@@ -1,4 +1,4 @@
-"""Basic verification of the independent-set planner."""
+"""Basic verification of the independent-set planner and audit path."""
 
 from __future__ import annotations
 
@@ -7,8 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from graph.graph import Graph
-from detection.independent_set import gwmin_independent, is_independent
+from clan_subnet_detector import Graph, gwmin_independent, is_independent, run_audit
 
 
 def test_empty():
@@ -24,7 +23,6 @@ def test_no_edges():
 
 
 def test_complete():
-    # K3
     g = Graph.from_edges(3, [(0, 1), (0, 2), (1, 2)])
     s = gwmin_independent(g)
     assert len(s) == 1
@@ -38,9 +36,27 @@ def test_banned():
     assert is_independent(g, s)
 
 
+def test_audit_demo():
+    edges = [
+        (0, 1), (0, 2), (0, 3),
+        (1, 2), (1, 3),
+        (2, 3),
+        (0, 4),
+        (3, 5),
+        (7, 8), (8, 9),
+    ]
+    g = Graph.from_edges(n=10, edges=edges, directed=False)
+    report = run_audit(g, independent_k=5)
+    assert report.checks["all_findings_verified"] is True
+    assert report.graph_n == 10
+    assert any(f.kind == "clique" and f.verified for f in report.findings)
+    assert any(f.kind == "independent_set" and f.verified for f in report.findings)
+
+
 if __name__ == "__main__":
     test_empty()
     test_no_edges()
     test_complete()
     test_banned()
-    print("All independent-set tests passed.")
+    test_audit_demo()
+    print("All tests passed.")

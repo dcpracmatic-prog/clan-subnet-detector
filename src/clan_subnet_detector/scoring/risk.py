@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from typing import Iterable
 
-from graph.graph import Graph
-from graph.metrics import density
+from ..graph.graph import Graph
+from ..graph.metrics import density
 
 
 def score_clique(g: Graph, nodes: Iterable[int], base_weight: float = 1.0) -> float:
